@@ -103,6 +103,15 @@ _poly('updateScriptButtonsWith', (updater) => {
 });
 _poly('getAllEnabledScriptButtons', () => ({}));
 
+// 宏注册（registerMacro ST 主代码有但 deprecated；unregisterMacro 可能没）
+_poly('unregisterMacro', (key) => {
+    try {
+        if (typeof window.SillyTavern?.MacrosParser?.unregisterMacro === 'function') {
+            return window.SillyTavern.MacrosParser.unregisterMacro(key);
+        }
+    } catch {}
+});
+
 // 上游 stack 显示这个 API 早期会被调
 // bundle 内 checkMinimumVersion('3.4.17', ...) 用 compare-versions 校验 semver
 // 必须返合法 semver；返大版本号让 minimum 检查直接通过
