@@ -514,3 +514,47 @@ export function extractFromFormattedOutput(result: string | GenerateToolCallResu
 export function extractFromGenerateToolCallResult(result: GenerateToolCallResult): string | null {
     return extractFromToolCall([result.tool_calls]);
 }
+
+// ========== CFS-MVU 改动 #2 · schema degradation helper ==========
+//
+// 上游 schema 写法（mvu_update_schema / json_patch_operation_schema /
+// MVU_JSON_PATCH_RESPONSE_SCHEMA）大量使用 `additionalProperties: false`，
+// DS V4 官方 API 直接拒绝（400）。本 helper 在 DS4 路径下把 schema 降级到
+// 兼容版本，其他 provider 保持上游原 schema 不变。
+//
+// 设计原则：
+//   - 只去 DS 不识别的字段（additionalProperties:false / $schema ref）
+//   - 不改变 schema 语义（required/type/enum/properties/anyOf 全留）
+//   - 不修改上游 freeze 的对象本体，返回新对象
+// ====================================================================
+
+export function degradeJsonSchemaForDS<T>(schema: T): T {
+    if (Array.isArray(schema)) {
+        return schema.map(degradeJsonSchemaForDS) as unknown as T;
+    }
+    if (schema && typeof schema === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(schema as Record<string, unknown>)) {
+            // 去 DS4 不识别的字段
+            if (k === 'additionalProperties' && v === false) continue;
+            if (k === '$schema') continue;
+            out[k] = degradeJsonSchemaForDS(v);
+        }
+        return out as unknown as T;
+    }
+    return schema;
+}
+
+/**
+ * 返回 MVU_TOOL_DEFINITION 的 DS4 兼容版（parameters 走降级）。
+ * 上游 frozen 对象不被修改。
+ */
+export function degradeMvuToolDefinitionForDS(): typeof MVU_TOOL_DEFINITION {
+    return {
+        ...MVU_TOOL_DEFINITION,
+        function: {
+            ...MVU_TOOL_DEFINITION.function,
+            parameters: degradeJsonSchemaForDS(MVU_TOOL_DEFINITION.function.parameters),
+        },
+    } as typeof MVU_TOOL_DEFINITION;
+}

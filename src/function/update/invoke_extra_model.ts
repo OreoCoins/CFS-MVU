@@ -1,4 +1,5 @@
 import {
+    degradeMvuToolDefinitionForDS,
     extractFromFormattedOutput,
     extractFromGenerateToolCallResult,
     MVU_JSON_PATCH_RESPONSE_SCHEMA,
@@ -21,6 +22,8 @@ import { useDataStore } from '@/store';
 import { normalizeBaseURL } from '@/util';
 import { literalYamlify, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
+// CFS-MVU 改动 #1：provider 探测（DS4 / OpenAI / Anthropic / Google / unknown）
+import { detectProvider, describeProfile } from '@/function/detect_provider';
 
 //测试用，为了使首次请求必失败
 let debug_extra_request_counter = 0;
@@ -283,15 +286,57 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     }
 
     let task = decoded_extra_model_task;
+
+    // === CFS-MVU 改动 #1（DS4 适配）开始 ===
+    // 上游写死 OpenAI 兼容协议（tool_choice='required' + json_schema strict），DS4 直接 400。
+    // 这里提前探测 provider，下方两条 response_format 分支按 profile 分流。
+    // L361 主路径处的 model_name 计算保持原样，避免破坏上游行为。
+    const probe_model_name =
+        store.settings.额外模型解析配置.模型来源 === '与插头相同'
+            ? SillyTavern.getChatCompletionModel()
+            : store.settings.额外模型解析配置.模型名称;
+    const probe_api_url =
+        store.settings.额外模型解析配置.模型来源 === '自定义'
+            ? store.settings.额外模型解析配置.api地址
+            : '';
+    const provider_profile = detectProvider({
+        model_name: probe_model_name,
+        api_url: probe_api_url,
+    });
+    console.log(describeProfile(provider_profile));
+    // === CFS-MVU 改动 #1 END ===
+
     if (response_format === '工具调用') {
         task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
         store.runtimes.is_function_call_enabled = true;
-        config.tools = [MVU_TOOL_DEFINITION];
-        config.tool_choice = 'required';
+        // CFS-MVU #2: DS4 用降级 schema（去 additionalProperties:false / $schema）
+        config.tools = [
+            provider_profile.is_ds4_style
+                ? degradeMvuToolDefinitionForDS()
+                : MVU_TOOL_DEFINITION,
+        ];
+        // CFS-MVU #1.C: DS4 用 'auto'，其他保持上游 'required'
+        config.tool_choice = provider_profile.supports_required_tool_choice
+            ? 'required'
+            : 'auto';
     } else if (response_format === '格式化输出') {
-        task +=
-            '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object matching the provided json_schema: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`.';
-        config.json_schema = MVU_JSON_PATCH_RESPONSE_SCHEMA;
+        if (provider_profile.supports_strict_json_schema) {
+            // 上游原路径：strict json_schema（OpenAI / Google / unknown 走这里）
+            task +=
+                '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object matching the provided json_schema: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`.';
+            config.json_schema = MVU_JSON_PATCH_RESPONSE_SCHEMA;
+        } else {
+            // CFS-MVU #1.B: DS4 / Anthropic 退化 — strict json_schema 不可用
+            //   - DS 官方拒绝 400；Anthropic 没有 OpenAI 兼容接口
+            //   - 改用 json_object + schema 描述塞 task 末尾（让模型按约定 shape 生成）
+            const schema_hint = JSON.stringify(MVU_JSON_PATCH_RESPONSE_SCHEMA);
+            task +=
+                '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object matching this exact shape: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`. JSON Schema for shape reference (do not echo): ' +
+                schema_hint;
+            (config as { response_format?: { type: string } }).response_format = {
+                type: 'json_object',
+            };
+        }
     }
 
     //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。

@@ -20,6 +20,78 @@ import { parseString } from '@util/common';
 import { klona } from 'klona';
 import * as math from 'mathjs';
 
+// ========== CFS-MVU 改动 #3 · LLM 自由格式 pre-normalize（救命模式）==========
+//
+// 上游 extractCommands 严格匹配 _.set(...) / <json_patch>，LLM 一旦输出 YAML-like
+// / XML-like / op-spec 自由格式（"add /path = value"、"<update>/foo: bar</update>"、
+// "op: replace, path: /xxx, value: yyy"）整段 abort。partial commit 上游已经
+// 通过单条 continue 实现，本 helper 只在 extractCommands 完全空手时尝试救一下。
+//
+// 设计：不删原文，只追加生成的 _.set() 候选到 inputText 末尾让 extractCommands 二次提取。
+// =====================================================================
+
+/** JSON Pointer / 斜杠路径 → lodash 点路径 */
+function _cfsNormalizeJsonPath(p: string): string {
+    return p.replace(/^\//, '').replace(/\//g, '.');
+}
+
+/** 把自由格式的 value 字面量包成 _.set 第二参的合法 JS 字面量 */
+function _cfsCoerceValueLiteral(v: string): string {
+    const trimmed = v.trim();
+    if (!trimmed) return 'null';
+    // 已是带引号字符串 / 数字 / bool / null → 原样
+    if (/^['"`].*['"`]$/.test(trimmed)) return trimmed;
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed;
+    if (trimmed === 'true' || trimmed === 'false' || trimmed === 'null') return trimmed;
+    // JSON 对象 / 数组 → 原样（信任 LLM 输出能被 parseCommandValue 吃）
+    if (/^[[{]/.test(trimmed)) return trimmed;
+    // 字符串裸文本 → JSON 加引号
+    return JSON.stringify(trimmed);
+}
+
+/**
+ * 把自由格式提取成 _.set('path', value); 候选，追加到 inputText 末尾。
+ * 如无任何命中则返回原文（让上层判 fallback 失败）。
+ */
+export function _cfsPreNormalizeFreeFormCommands(inputText: string): string {
+    const appended: string[] = [];
+
+    // A: <update>/path: value</update>  /  <set>...</set>  /  <var>...</var>
+    const xmlPattern = /<(update|set|var)>\s*['"]?(\/?[\w./[\]-]+)['"]?\s*[:=]\s*([\s\S]+?)\s*<\/\1>/gim;
+    for (const m of inputText.matchAll(xmlPattern)) {
+        const path = _cfsNormalizeJsonPath(m[2]);
+        if (!path) continue;
+        appended.push(
+            `_.set('${path}', ${_cfsCoerceValueLiteral(m[3])}); // [CFS pre-normalize: <${m[1]}>]`
+        );
+    }
+
+    // B: 行首 op: replace, path: /xxx, value: yyy
+    const opPattern = /^\s*op\s*[:=]\s*(replace|add|insert|set|remove|delete)\s*[,;]\s*path\s*[:=]\s*['"]?(\/?[\w./[\]-]+)['"]?\s*(?:[,;]\s*value\s*[:=]\s*([^\n]+?))?\s*$/gim;
+    for (const m of inputText.matchAll(opPattern)) {
+        const path = _cfsNormalizeJsonPath(m[2]);
+        if (!path) continue;
+        appended.push(
+            `_.set('${path}', ${_cfsCoerceValueLiteral(m[3] ?? 'null')}); // [CFS pre-normalize: op-line]`
+        );
+    }
+
+    // C: add /path = value 风格（每行）
+    const addPattern = /^\s*(?:add|set|replace|insert)\s+['"]?(\/?[\w./[\]-]+)['"]?\s*[=:]\s*([^\n]+)$/gim;
+    for (const m of inputText.matchAll(addPattern)) {
+        const path = _cfsNormalizeJsonPath(m[1]);
+        if (!path) continue;
+        appended.push(
+            `_.set('${path}', ${_cfsCoerceValueLiteral(m[2])}); // [CFS pre-normalize: add-line]`
+        );
+    }
+
+    if (appended.length === 0) return inputText;
+    return inputText + '\n\n' + appended.join('\n') + '\n';
+}
+
+// ========== CFS-MVU 改动 #3 END ==========
+
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
     // Regular expression to match backslashes and quotes (including backticks) at the beginning and end
@@ -676,7 +748,25 @@ export async function updateVariables(
     const processed_message_content = substitudeMacros(current_message_content);
 
     // 使用重构后的 extractCommands 提取所有命令
-    const commands = extractCommands(processed_message_content);
+    let commands = extractCommands(processed_message_content);
+
+    // CFS-MVU #3: 上游空手时启用 pre-normalize 救命模式，自由格式 → _.set() 再吃一次
+    if (commands.length === 0) {
+        const normalized = _cfsPreNormalizeFreeFormCommands(processed_message_content);
+        if (normalized !== processed_message_content) {
+            const rescued = extractCommands(normalized);
+            if (rescued.length > 0) {
+                console.warn(
+                    `[CFS-MVU/parser-fallback] 上游 extractCommands 空手，pre-normalize 救出 ${rescued.length} 条命令`
+                );
+                commands = rescued;
+            } else {
+                console.warn(
+                    '[CFS-MVU/parser-fallback] pre-normalize 也未识别任何自由格式（输入可能纯散文）'
+                );
+            }
+        }
+    }
 
     // 触发变量更新开始事件，通知外部系统
     _.set(variables.stat_data, '$internal', {
@@ -689,7 +779,8 @@ export async function updateVariables(
     let current_command: Command | undefined;
     const outError = function (content: string) {
         const title = `发生变量更新错误, 可能需要重Roll: ${current_command?.full_match}`;
-        console.warn(`${title}\n${content}`);
+        // CFS-MVU #3: 加 [CFS-MVU/soft-skip] 前缀，方便 F12 grep；保持单条 continue partial commit 不变
+        console.warn(`[CFS-MVU/soft-skip] ${title}\n${content}`);
         error_info = {
             title: `[MVU]${title}`,
             content,
