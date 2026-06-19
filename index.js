@@ -341,7 +341,20 @@ try {
     console.warn(`${TAG} 注入假 #tavern_helper 失败`, e);
 }
 
-console.log(`${TAG} polyfill 完成，准备加载 bundle.js`);
+// 诊断 log — 所有关键全局函数到位情况
+const polyDiag = {};
+['eventOn', 'eventOnce', 'eventEmit', 'eventOff',
+ 'getScriptId', 'getScriptName', 'getButtonEvent', 'eventOnButton',
+ 'getTavernHelperVersion', 'getVariables', 'updateVariablesWith',
+ 'getScriptButtons', 'replaceScriptButtons', 'updateScriptButtonsWith',
+ 'getAllEnabledScriptButtons', 'registerMacro', 'unregisterMacro',
+ 'getChatMessages', 'setChatMessages', 'getLastMessageId',
+ 'substitudeMacros', 'generateRaw', 'getCurrentChid'
+].forEach(name => {
+    polyDiag[name] = typeof window[name];
+});
+console.log(`${TAG} polyfill diagnostic =`, polyDiag);
+console.log(`${TAG} polyfill 完成，准备加载 bundle.js (commit 61c9648+)`);
 
 // ========== ⑩ Dynamic import bundle.js + 异常处理 ==========
 
