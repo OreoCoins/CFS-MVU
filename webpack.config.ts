@@ -384,15 +384,19 @@ function config(_env: any, argv: any): webpack.Configuration {
             if (request in global) {
                 return callback(null, 'var ' + global[request as keyof typeof global]);
             }
-            const cdn = {
+            // CFS-MVU 重写（spec Day 7-3）：
+            // 默认 bundle 所有依赖到本地，不走 CDN。原版走 jsdelivr CDN 在 ST 原生
+            // 扩展环境因网络/证书/CSP 等原因可能失败 → bundle 加载链路炸。
+            // 浏览器全局（jquery/lodash/etc.，前面 global 表已 cover）仍外置。
+            const cdn: Record<string, string> = {
                 sass: 'https://jspm.dev/sass',
             };
-            return callback(
-                null,
-                'module-import ' +
-                    (cdn[request as keyof typeof cdn] ??
-                        `https://testingcf.jsdelivr.net/npm/${request}/+esm`)
-            );
+            if (cdn[request]) {
+                return callback(null, 'module-import ' + cdn[request]);
+            }
+            // 其他依赖（klona/pinia/compare-versions/fast-json-patch/mathjs/...）
+            // 全部由 webpack 内嵌到 bundle.js，避免运行时网络依赖
+            return callback();
         },
     };
 }
