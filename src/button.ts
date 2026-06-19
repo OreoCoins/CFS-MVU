@@ -534,7 +534,9 @@ export const buttons: Button[] = [
 let prev_states: ScriptButton[] = [];
 
 export function initButtons() {
-    appendInexistentScriptButtons(buttons.map(button => ({ name: button.name, visible: false })));
+    // CFS-MVU fix(day8-fix3): 默认 visible: true 让按钮一装上就启用
+    // 上游 false 是让用户自己勾选；CFS-MVU 套餐版主打"一装即用"，全默认开启
+    appendInexistentScriptButtons(buttons.map(button => ({ name: button.name, visible: true })));
     buttons.forEach(button => {
         eventOn(getButtonEvent(button.name), button.function);
     });
