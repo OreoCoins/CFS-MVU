@@ -1,3 +1,14 @@
+========================================
+CFS-MVU is a fork of MagicalAstrogy/MagVarUpdate.
+
+  Original work     © 2025 MagicalAstrogy & StageDog        (MIT, see below)
+  CFS-MVU changes   © 2026 OreoCoins / CFS-Suite contributors (MIT, same terms)
+
+CFS-MVU keeps the upstream MIT license unmodified. The full original
+notice follows, immediately below. See NOTICE.md for the running list of
+CFS-MVU changes against the upstream baseline.
+========================================
+
 Copyright (c) 2025 MagicalAstrogy & StageDog.
 
 Permission is hereby granted, free of charge, to any person

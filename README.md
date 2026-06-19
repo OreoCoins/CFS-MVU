@@ -1,3 +1,14 @@
+> ## ⚠️ 这是 fork，不是上游
+>
+> **CFS-MVU** 是 [MagicalAstrogy/MagVarUpdate](https://github.com/MagicalAstrogy/MagVarUpdate) 的 fork，由 [OreoCoins](https://github.com/OreoCoins) 维护，作为 [CFS-Suite](https://github.com/OreoCoins/CFS-Suite) 套餐版的预编译产物链路的上游。
+>
+> - 基线：upstream `c1ae3a9`（2026-04-25）
+> - 改动清单见 [`NOTICE.md`](./NOTICE.md)；CFS 自己的变更日志见 [`CHANGELOG-CFS.md`](./CHANGELOG-CFS.md)
+> - 沿用上游 MIT 许可，原版权归 MagicalAstrogy & StageDog
+> - **想独立使用 MVU 请回上游**；本 fork 主要面向 CFS-Suite 套餐版使用，对 DeepSeek V4 协议做了针对性适配
+>
+> ---
+
 # MagVarUpdate
 这是基于 [酒馆助手](https://github.com/N0VI028/JS-Slash-Runner) 的一个脚本，用于提供简单的基于变量的状态维护，并使得状态栏编写不再耗费过多的模型注意力。
 
