@@ -86,6 +86,23 @@ _poly('appendInexistentScriptButtons', () => {});
 _poly('getScriptName', () => 'cfs-mvu-native');
 _poly('getScriptId', () => SCRIPT_ID);
 
+// 脚本按钮 API（initButtons 内部用）— ST 原生扩展不显示酒馆助手风格按钮，全 stub
+const _scriptButtonsStore = [];
+_poly('getScriptButtons', () => _scriptButtonsStore.slice());
+_poly('replaceScriptButtons', (buttons) => {
+    _scriptButtonsStore.length = 0;
+    if (Array.isArray(buttons)) _scriptButtonsStore.push(...buttons);
+});
+_poly('updateScriptButtonsWith', (updater) => {
+    const next = updater(_scriptButtonsStore.slice());
+    if (Array.isArray(next)) {
+        _scriptButtonsStore.length = 0;
+        _scriptButtonsStore.push(...next);
+    }
+    return _scriptButtonsStore.slice();
+});
+_poly('getAllEnabledScriptButtons', () => ({}));
+
 // 上游 stack 显示这个 API 早期会被调
 // bundle 内 checkMinimumVersion('3.4.17', ...) 用 compare-versions 校验 semver
 // 必须返合法 semver；返大版本号让 minimum 检查直接通过
