@@ -292,6 +292,29 @@ if (typeof window.SillyTavern === 'object' && window.SillyTavern) {
     if (typeof ST.chat === 'undefined') ST.chat = stChat;
 }
 
+// ===== ⓒ 注入假的酒馆助手脚本容器（让 registerAsUniqueScript 找到自己）=====
+// store.ts L236 registerAsUniqueScript 调 $('#tavern_helper').find('div[data-script-id]')
+// 期望酒馆助手的脚本管理 DOM 容器存在。ST 原生扩展环境没这个容器，
+// → getPreferredScriptId() 永远返 undefined
+// → should_enable 永远 false
+// → createMvu watch 永远不调 _.set(window, 'Mvu', mvu)
+// → Mvu 永远不挂 window！
+// 注入假容器骗过 jQuery selector
+try {
+    if (!document.querySelector('#tavern_helper')) {
+        const fakeContainer = document.createElement('div');
+        fakeContainer.id = 'tavern_helper';
+        fakeContainer.style.display = 'none';
+        const fakeScript = document.createElement('div');
+        fakeScript.setAttribute('data-script-id', SCRIPT_ID);
+        fakeContainer.appendChild(fakeScript);
+        (document.body || document.documentElement).appendChild(fakeContainer);
+        console.log(`${TAG} 已注入假 #tavern_helper 容器（script_id=${SCRIPT_ID}）`);
+    }
+} catch (e) {
+    console.warn(`${TAG} 注入假 #tavern_helper 失败`, e);
+}
+
 console.log(`${TAG} polyfill 完成，准备加载 bundle.js`);
 
 // ========== ⑩ Dynamic import bundle.js + 异常处理 ==========
