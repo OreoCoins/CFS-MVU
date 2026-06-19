@@ -382,7 +382,15 @@ function stripLeadingTagBlock(input: string, tagPattern: string): string {
 }
 
 function cleanStructuredPayload(input: string): string {
-    return input.replaceAll(/```.*/gm, '').trim();
+    let s = input;
+    // 1) 删 markdown 围栏（含 ```json）
+    s = s.replaceAll(/```.*/gm, '');
+    // 2) CFS-MVU fix(day8)：删 HTML 注释 <!-- ... --> （DS V4 偶发输出 <!-- STATEMENT REJECTED --> 等）
+    s = s.replaceAll(/<!--[\s\S]*?-->/g, '');
+    // 3) 删前导散文（找第一个 { 或 [ 作为 JSON 起点）
+    //    例：「Here is the JSON: {...}」/「JSON 数据: [...]」/「<!-- xx -->\n{...}」
+    s = s.replace(/^[^{[]*/, '');
+    return s.trim();
 }
 
 function normalizeJsonPatchPayload(input: unknown): string | null {
