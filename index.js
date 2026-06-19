@@ -36,6 +36,28 @@ const LS_VAR_PREFIX = 'cfs-mvu/scriptvars/';
 
 console.log(`${TAG} v${VERSION} loading — polyfill 准备中...`);
 
+// ===== 全局错误捕获 — bundle init 任何阶段抛错都能看到 =====
+// jQuery ready handler 内 await 异常默认走 unhandledrejection，被吞掉看不到。
+window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const stack = reason?.stack ?? '';
+    if (stack.includes('main.ts') || stack.includes('mvu') || stack.includes('Mvu')) {
+        console.error(`${TAG} [unhandledrejection 抓到 MVU init 异常]`, reason);
+        if (typeof toastr !== 'undefined') {
+            toastr.error(
+                `MVU 初始化失败: ${reason?.message ?? reason}`,
+                'CFS-MVU 套餐版',
+                { timeOut: 15000 },
+            );
+        }
+    }
+});
+window.addEventListener('error', (event) => {
+    if (event.filename?.includes('bundle.js') || event.message?.toLowerCase().includes('mvu')) {
+        console.error(`${TAG} [window.error 抓到 MVU 异常]`, event.message, event.error);
+    }
+});
+
 // ========== ① 事件层 polyfill（已在 CFS-Suite 装时 polyfill 过，这里幂等）==========
 
 function _poly(name, impl) {
