@@ -3,7 +3,23 @@ import { isMvuData, MvuData } from '@/variable_def';
 import * as jsonpatch from 'fast-json-patch';
 import { klona } from 'klona';
 
-export const saveChatDebounced = _.debounce(SillyTavern.saveChat, 1000);
+// CFS-MVU 补丁：原 _.debounce(SillyTavern.saveChat, 1000) 在模块顶层执行；
+// 当 SillyTavern.saveChat 在加载时未就绪（undefined），lodash debounce 抛 TypeError，
+// 整个 bundle ESM 加载失败 → CFS-Suite import 链炸。
+// 改 lazy 化：首次调用时才解析真正的 saveChat，没有时 noop（不阻塞主路径）。
+let _saveChatDebouncedInner: ((...args: unknown[]) => unknown) | null = null;
+export const saveChatDebounced: (...args: unknown[]) => unknown = (...args: unknown[]) => {
+    if (!_saveChatDebouncedInner) {
+        const real = (SillyTavern as { saveChat?: (...a: unknown[]) => unknown })?.saveChat;
+        if (typeof real === 'function') {
+            _saveChatDebouncedInner = _.debounce(real, 1000) as (...args: unknown[]) => unknown;
+        } else {
+            console.warn('[CFS-MVU/util] SillyTavern.saveChat 不可用，saveChatDebounced 走 noop');
+            _saveChatDebouncedInner = () => undefined;
+        }
+    }
+    return _saveChatDebouncedInner(...args);
+};
 
 /**
  * 寻找包含变量信息的最后一个楼层
