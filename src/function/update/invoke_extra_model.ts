@@ -10,6 +10,9 @@ import claude_tail from '@/prompts/claude_tail.txt?raw';
 import extra_model_task from '@/prompts/extra_model_task.txt?raw';
 import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
+// CFS-MVU fix(day8-prompt): DS V4 专用 head/tail，去 ATRI/测试协议，避 DS4 安全策略
+import deepseek_head from '@/prompts/deepseek_head.txt?raw';
+import deepseek_tail from '@/prompts/deepseek_tail.txt?raw';
 import {
     buildOtherPresetGenerateConfig,
     getExtraModelPreset,
@@ -230,6 +233,9 @@ const decoded_gemini_head = decode(gemini_head);
 const decoded_claude_tail = decode(claude_tail);
 const decoded_gemini_tail = decode(gemini_tail);
 const decoded_extra_model_task = decode(extra_model_task);
+// CFS-MVU fix(day8-prompt): DS V4 专用 prompt
+const decoded_deepseek_head = decode(deepseek_head);
+const decoded_deepseek_tail = decode(deepseek_tail);
 
 function isGenerateToolCallResult(
     result: string | GenerateToolCallResult
@@ -325,10 +331,17 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             task +=
                 '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object matching the provided json_schema: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`.';
             config.json_schema = MVU_JSON_PATCH_RESPONSE_SCHEMA;
+        } else if (provider_profile.is_ds4_style) {
+            // CFS-MVU fix(day8-prompt): DS V4 退化路径
+            // 不塞 JSON Schema 对象（DS4 会判定为 meta 指令劫持），只用极简自然语言 hint。
+            // 完整 schema 在 deepseek_tail 里以自然语言描述（path/value/op 各自一句）。
+            task +=
+                '\n Output a JSON object with two keys: "analysis" (short English string) and "json_patch" (array of RFC6902 operations). No markdown, no comments, no prose.';
+            (config as { response_format?: { type: string } }).response_format = {
+                type: 'json_object',
+            };
         } else {
-            // CFS-MVU #1.B: DS4 / Anthropic 退化 — strict json_schema 不可用
-            //   - DS 官方拒绝 400；Anthropic 没有 OpenAI 兼容接口
-            //   - 改用 json_object + schema 描述塞 task 末尾（让模型按约定 shape 生成）
+            // Anthropic 退化（没有 OpenAI 兼容 json_schema 接口）— 仍塞完整 schema 描述
             const schema_hint = JSON.stringify(MVU_JSON_PATCH_RESPONSE_SCHEMA);
             task +=
                 '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object matching this exact shape: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`. JSON Schema for shape reference (do not echo): ' +
@@ -409,12 +422,21 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             ? SillyTavern.getChatCompletionModel()
             : store.settings.额外模型解析配置.模型名称;
     const is_gemini = model_name.toLowerCase().includes('gemini');
+    // CFS-MVU fix(day8-prompt): DS V4 用专用 head/tail（短/无 ATRI/无测试协议）
+    const is_ds4 = provider_profile.is_ds4_style;
 
     const result = await generateRaw({
         ...config,
         ordered_prompts: [
             { role: 'system', content: batch_id ?? generateRandomHeader() },
-            { role: 'system', content: is_gemini ? decoded_gemini_head : decoded_claude_head },
+            {
+                role: 'system',
+                content: is_ds4
+                    ? decoded_deepseek_head
+                    : is_gemini
+                      ? decoded_gemini_head
+                      : decoded_claude_head,
+            },
             { role: 'system', content: '<additional_information>' },
             'persona_description',
             'char_description',
@@ -426,7 +448,14 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             { role: 'system', content: '</past_observe>' },
             { role: 'system', content: task },
             'user_input',
-            { role: 'system', content: is_gemini ? decoded_gemini_tail : decoded_claude_tail },
+            {
+                role: 'system',
+                content: is_ds4
+                    ? decoded_deepseek_tail
+                    : is_gemini
+                      ? decoded_gemini_tail
+                      : decoded_claude_tail,
+            },
         ],
     });
     return normalizeGenerateResultByResponseFormat(result, response_format);
