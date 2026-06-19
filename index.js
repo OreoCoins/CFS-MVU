@@ -65,7 +65,9 @@ _poly('getScriptName', () => 'cfs-mvu-native');
 _poly('getScriptId', () => SCRIPT_ID);
 
 // 上游 stack 显示这个 API 早期会被调
-_poly('getTavernHelperVersion', () => 'cfs-mvu-shim-1.0');
+// bundle 内 checkMinimumVersion('3.4.17', ...) 用 compare-versions 校验 semver
+// 必须返合法 semver；返大版本号让 minimum 检查直接通过
+_poly('getTavernHelperVersion', () => '4.8.11');
 
 // ========== ③ 变量层 polyfill（localStorage 兜底）==========
 
