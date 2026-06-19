@@ -371,15 +371,14 @@ function config(_env: any, argv: any): webpack.Configuration {
             ) {
                 return callback();
             }
+            // CFS-MVU 重写（spec Day 7-fix）：
+            // 只保留 ST 真正暴露的浏览器全局（$, _, toastr, showdown）；
+            // vue/vue-router/yaml/zod 在 ST 原生扩展环境不存在 → 内嵌到 bundle
             const global = {
                 jquery: '$',
                 lodash: '_',
                 showdown: 'showdown',
                 toastr: 'toastr',
-                vue: 'Vue',
-                'vue-router': 'VueRouter',
-                yaml: 'YAML',
-                zod: 'z',
             };
             if (request in global) {
                 return callback(null, 'var ' + global[request as keyof typeof global]);
