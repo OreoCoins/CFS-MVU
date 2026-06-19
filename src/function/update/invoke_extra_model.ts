@@ -17,6 +17,8 @@ import {
     buildOtherPresetGenerateConfig,
     getExtraModelPreset,
 } from '@/function/update/extra_model_preset';
+// CFS-MVU fix(链路): 副请求拿当前 stat_data 全文塞 task，绕过被 CFS-Suite 改的 worldbook
+import { getLastValidVariable } from '@/util';
 import {
     clearExtraModelRequestOverrides,
     setExtraModelRequestOverrides,
@@ -325,7 +327,33 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
         config.tool_choice = provider_profile.supports_required_tool_choice
             ? 'required'
             : 'auto';
-    } else if (response_format === '格式化输出') {
+    }
+
+    // CFS-MVU fix(链路): 副请求 task 末尾注入当前 stat_data 全文（YAML）
+    // 背景：CFS-Suite v4_full 接管模式把 worldbook 内的 stat_data macro 替换成
+    // STABLE_BATCH 占位符 → 副请求 LLM 看不到真实 stat_data 全文 → 推断 path 全是猜的。
+    // 通杀方案：CFS-MVU 自己塞 stat_data，绕过 worldbook，跨卡通用。
+    try {
+        const lastMid =
+            typeof getLastMessageId === 'function' ? getLastMessageId() : -1;
+        const currentVars = getLastValidVariable(lastMid);
+        const statData = currentVars?.stat_data;
+        if (statData && Object.keys(statData).length > 0) {
+            const cleaned = _.omit(statData, ['$internal', '$delta']);
+            const statSnapshot =
+                typeof YAML !== 'undefined' && YAML?.stringify
+                    ? YAML.stringify(cleaned)
+                    : JSON.stringify(cleaned, null, 2);
+            task +=
+                '\n\n## 当前 stat_data 完整结构（请严格基于此层级推断 path，禁止编造不存在的路径或键名）：\n```yaml\n' +
+                statSnapshot +
+                '\n```';
+        }
+    } catch (e) {
+        console.warn('[CFS-MVU/inject-stat] 注入 stat_data 失败', e);
+    }
+
+    if (response_format === '格式化输出') {
         if (provider_profile.supports_strict_json_schema) {
             // 上游原路径：strict json_schema（OpenAI / Google / unknown 走这里）
             task +=
