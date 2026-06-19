@@ -26,8 +26,8 @@ CFS-MVU 是 [MagicalAstrogy/MagVarUpdate](https://github.com/MagicalAstrogy/MagV
 
 ## 待施工改动（占位，对应 spec §4）
 
-> 以下条目在 Day 4 落地时把"待"改成具体日期，并填上 commit SHA。
+> 所有 spec §4 改动 #1-#6 已落地。
 
-- [ ] **改动 #4 — CFS 集成 hook**：新文件 `src/function/cfs_hooks.ts`（暴露 `Mvu._cfsHooks` 命名空间）
-- [ ] **改动 #5 — exclusive mode**：新文件 `src/function/exclusive_mode.ts`（silent 接管 `window.Mvu`）
-- [ ] **改动 #6 — 版本号互信**：暴露 `Mvu._cfsEdition`
+- ✅ **改动 #4 — CFS 集成 hook（2026-06-19）**：新文件 `src/function/cfs_hooks.ts`，暴露 `Mvu._cfsHooks` 命名空间（onBeforeWrite / onAfterWrite / onParseFailed / readDelegate），register API + 默认 noop。触发点插桩留 Day 5。
+- ✅ **改动 #5 — exclusive mode（2026-06-19）**：新文件 `src/function/exclusive_mode.ts`，scanExistingMvu + lockWindowMvu（Object.defineProperty configurable:false, writable:false）。fetch intercept / 卡级脚本 patch 留 Day 5。
+- ✅ **改动 #6 — 版本号互信（2026-06-19）**：`createMvu()` 暴露 `Mvu._cfsEdition = { version, upstream, built_at, features[] }`，CFS-Suite 启动期检测决定深度集成 vs 外挂适配。

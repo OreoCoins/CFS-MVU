@@ -3,6 +3,10 @@ import { updateVariable, updateVariables } from '@/function/update_variables';
 import { isValueWithDescription, MvuData, variable_events } from '@/variable_def';
 import { watch } from 'vue';
 import { useDataStore } from '../../store';
+// CFS-MVU 改动 #4：CFS 集成 hook
+import { createCfsHooks } from '@/function/cfs_hooks';
+// CFS-MVU 改动 #5：silent 接管 window.Mvu
+import { scanExistingMvu, lockWindowMvu } from '@/function/exclusive_mode';
 
 function createMvu() {
     const mvu = {
@@ -158,11 +162,37 @@ function createMvu() {
          * @brief 返回当前轮次是否属于额外模型解析轮次。
          */
         isDuringExtraAnalysis: () => useDataStore().runtimes.is_during_extra_analysis,
+
+        // CFS-MVU 改动 #4：CFS 集成 hook 命名空间
+        // CFS-Suite 通过 Mvu._cfsHooks.register({...}) 注册 hook。
+        // Hook 触发点（updateVariables 写入前后 / invoke_extra_model 解析失败）在
+        // Day 5 接 CFS-Suite 真正用到时插桩；本笔仅提供 register API + 默认 noop。
+        _cfsHooks: createCfsHooks(),
+
+        // CFS-MVU 改动 #6：暴露版本号与上游 SHA，给 CFS-Suite 启动期检测
+        // 存在 → CFS-Suite 启用深度集成（绕过 fetch monkey-patch 路径）
+        // 不存在（上游 MVU）→ CFS-Suite 降级到外挂适配模式
+        _cfsEdition: {
+            version: '5.0.0-day4b',
+            upstream: 'MagicalAstrogy/MagVarUpdate@c1ae3a9',
+            built_at: '2026-06-19',
+            features: [
+                'ds4_adapt',          // 改动 #1
+                'schema_degradation', // 改动 #2
+                'parser_fallback',    // 改动 #3
+                'cfs_hooks',          // 改动 #4
+                'exclusive_mode',     // 改动 #5
+                'cfs_edition_marker', // 改动 #6
+            ] as const,
+        },
     };
     return mvu;
 }
 
 export function initGlobals() {
+    // CFS-MVU 改动 #5：在挂 Mvu 之前扫描已存在实例，决定是否替换
+    scanExistingMvu();
+
     const mvu = createMvu();
     const store = useDataStore();
     const stop = watch(
@@ -171,6 +201,8 @@ export function initGlobals() {
             if (should_enabled) {
                 _.set(window.parent, 'Mvu', mvu);
                 eventEmit('global_Mvu_initialized');
+                // CFS-MVU 改动 #5：Mvu 挂上后立即 lock window.Mvu，阻止其他来源覆盖
+                lockWindowMvu();
             }
         },
         { immediate: true }

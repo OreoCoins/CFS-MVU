@@ -7,6 +7,27 @@
 
 ---
 
+## v5.0.0-day4b — 2026-06-19
+
+- **feat (#4 cfs_hooks)** — 新增 `src/function/cfs_hooks.ts`：
+  - `createCfsHooks()` 创建 registry，提供 register/clear API
+  - 4 个 hook：onBeforeWrite / onAfterWrite / onParseFailed / readDelegate
+  - 触发 helper：triggerBeforeWrite / triggerAfterWrite / triggerParseFailed / tryReadDelegate
+  - 默认 noop；hook 抛错 catch + console.warn 不中断 MVU 主路径
+  - **触发点插桩留 Day 5**（updateVariables / invoke_extra_model 插桩）
+- **feat (#5 exclusive_mode)** — 新增 `src/function/exclusive_mode.ts`：
+  - `scanExistingMvu()` 启动时扫 window.Mvu / window.parent.Mvu / globalThis.Mvu
+  - 检测 existing._cfsEdition 区分"重复装 CFS-MVU" vs "其他 MVU 实例"
+  - `lockWindowMvu()` 用 Object.defineProperty configurable:false, writable:false 锁定
+  - **fetch intercept / 卡级脚本 patch 留 Day 5**
+- **feat (#6 _cfsEdition)** — `createMvu()` 暴露 `Mvu._cfsEdition`：
+  - version: '5.0.0-day4b'
+  - upstream: 'MagicalAstrogy/MagVarUpdate@c1ae3a9'
+  - features: ['ds4_adapt', 'schema_degradation', 'parser_fallback', 'cfs_hooks', 'exclusive_mode', 'cfs_edition_marker']
+- **接入 createMvu** — `_cfsHooks: createCfsHooks()` + `_cfsEdition: {...}` 直接挂到 mvu 返回对象
+- **接入 initGlobals watch handler** — Mvu 挂上后立即 `lockWindowMvu()`，挂前 `scanExistingMvu()`
+- **chore** — bundle 体积 140999 → 143466（+2.4 KiB），webpack build 1.4s 通过
+
 ## v5.0.0-day2 — 2026-06-19
 
 - **feat (#1 DS4)** — 新增 `src/function/detect_provider.ts`（DS / OpenAI / Anthropic / Google / unknown 5 类 provider 探测，返回 `is_ds4_style` / `supports_strict_json_schema` / `supports_required_tool_choice` 三向开关）
