@@ -950,33 +950,39 @@ export async function updateVariables(
                 }
 
                 // 验证2：Schema 规则
+                //
+                // CFS-MVU 改动 #8（2026-06-21）：SCHEMA VIOLATION 三处守护降级为 warn。
+                // 跨卡通杀原则（用户钦定）：CFS 追求跨卡通杀而非单卡特调；卡作者通过
+                // 开场白 <JSONPatch> 显式 insert（如《虞淑婉》alt_greet_3 的
+                // insert /登场角色/樊雪芍）已表达「我要扩展这个 record」的明确意图。
+                // 旧 schema 守护拒绝执行 → 触发「需要重Roll」+ initCheck 失败 +
+                // PathRegistry 建不起来 + 额外解析哑火（一整条故障链）。
+                // 改：保留 warn 让 F12 仍可观察异常，但**不再 continue**，放行 _.set 执行。
+                // 真正的「LLM 乱塞键」副作用层面问题不归 schema 管。
                 if (targetSchema) {
                     if (targetSchema.type === 'object' && targetSchema.extensible === false) {
                         if (command.args.length === 2) {
                             // 合并
-                            outError(
-                                `SCHEMA VIOLATION: Cannot merge data into non-extensible object at path '${targetPath}'. ${reason_str}`
+                            console.warn(
+                                `[CFS-MVU/schema-relax] Schema 守护降级（merge into non-extensible object at '${targetPath}'）：放行执行 ${reason_str}`
                             );
-                            continue;
                         }
                         if (command.args.length >= 3) {
                             // 插入键
                             const newKey = String(parseCommandValue(command.args[1]));
                             if (!_.has(targetSchema.properties, newKey)) {
-                                outError(
-                                    `SCHEMA VIOLATION: Cannot assign new key '${newKey}' into non-extensible object at path '${targetPath}'. ${reason_str}`
+                                console.warn(
+                                    `[CFS-MVU/schema-relax] Schema 守护降级（insert new key '${newKey}' into non-extensible object at '${targetPath}'）：放行执行 ${reason_str}`
                                 );
-                                continue;
                             }
                         }
                     } else if (
                         targetSchema.type === 'array' &&
                         (targetSchema.extensible === false || targetSchema.extensible === undefined)
                     ) {
-                        outError(
-                            `SCHEMA VIOLATION: Cannot assign elements into non-extensible array at path '${targetPath}'. ${reason_str}`
+                        console.warn(
+                            `[CFS-MVU/schema-relax] Schema 守护降级（insert into non-extensible array at '${targetPath}'）：放行执行 ${reason_str}`
                         );
-                        continue;
                     }
                 } else if (
                     // 增加 targetPath !== '' 条件，防止对根路径进行父路径检查

@@ -173,9 +173,9 @@ function createMvu() {
         // 存在 → CFS-Suite 启用深度集成（绕过 fetch monkey-patch 路径）
         // 不存在（上游 MVU）→ CFS-Suite 降级到外挂适配模式
         _cfsEdition: {
-            version: '5.0.0-day4b',
+            version: '5.1.0-2026-06-21',
             upstream: 'MagicalAstrogy/MagVarUpdate@c1ae3a9',
-            built_at: '2026-06-19',
+            built_at: '2026-06-21',
             features: [
                 'ds4_adapt',          // 改动 #1
                 'schema_degradation', // 改动 #2
@@ -183,6 +183,8 @@ function createMvu() {
                 'cfs_hooks',          // 改动 #4
                 'exclusive_mode',     // 改动 #5
                 'cfs_edition_marker', // 改动 #6
+                'card_mvu_disable',   // 改动 #7：禁用卡自带 MVU 框架（保留 schema 脚本作扩展性接管点）
+                'schema_relax',       // 改动 #8：3 处 SCHEMA VIOLATION 守护降级 warn 放行（跨卡通杀 z.record 扩展性）
             ] as const,
         },
     };

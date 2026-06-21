@@ -10,6 +10,7 @@ import { useDataStore } from '@/store';
 import { checkMinimumVersion } from '@util/common';
 import { createPinia, getActivePinia, setActivePinia } from 'pinia';
 import { initExportedEvents } from '@/function/exported_events';
+import { disableCardMvuScripts } from '@/function/exclusive_mode';
 import { registerAsUniqueScript } from '@util/script';
 
 setActivePinia(getActivePinia() ?? createPinia());
@@ -47,6 +48,9 @@ $(async () => {
 
 async function initChatLevel() {
     const stop_list: Array<() => void> = [];
+    // CFS-MVU 改动 #7：霸王禁用本卡自带 MVU 框架脚本，必须在 initInitvar 之前，
+    // 抢在 CFS-MVU 自己读 [initvar] 建表前消除双 MVU 冲突。每次切卡都重扫重禁（幂等）。
+    disableCardMvuScripts();
     stop_list.push(await initInitvar());
     stop_list.push(initRequest());
     stop_list.push(initResponse());
