@@ -456,7 +456,18 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     const result = await generateRaw({
         ...config,
         ordered_prompts: [
-            { role: 'system', content: batch_id ?? generateRandomHeader() },
+            // CFS-MVU prefix-cache-unblock (2026-06-24):
+            // 上游把 batch_id 放在 ordered_prompts 第 1 位作为 ATRI 时代的 anti-fingerprint
+            // 随机段，但这会让 DS V4 自动 prefix cache 在 token 0 处就不匹配，整段稳定
+            // prefix（head + additional_info + persona + char + worldinfo + past_observe
+            // 标签 ≈ 5000~9000 token）全击穿，prompt_cache_hit_tokens 恒为 0。
+            //
+            // 现把 batch_id 挪到 tail 之前（user_input 之后）：
+            //   - 不再污染 prefix → DS 自动 prefix cache 可命中稳定段
+            //   - 仍保留在请求里 → 上游 anti-fingerprint 意图无损
+            //   - tail 仍占据最后位置 → 最终格式约束 (Output ONLY JSON / yaml)
+            //     不被随机字符串"翻盖"，避免模型偶发把 batch_id 当输出内容回显。
+            //   - 上游 cherry-pick 时按 prefix-cache-unblock 标记保留即可。
             {
                 role: 'system',
                 content: is_ds4
@@ -476,6 +487,8 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             { role: 'system', content: '</past_observe>' },
             { role: 'system', content: task },
             'user_input',
+            // anti-fingerprint 段落保留，位置压在 tail 之前
+            { role: 'system', content: batch_id ?? generateRandomHeader() },
             {
                 role: 'system',
                 content: is_ds4
